@@ -11,7 +11,11 @@ typedef enum
     DETECT,
     ENROLL,
     RECOGNIZE,
+    DELETE_ALL,
+    THRESH_DOWN,
+    THRESH_UP,
     DELETE,
+   
 } recognizer_state_t;
 
 void register_human_face_recognition(QueueHandle_t frame_i,

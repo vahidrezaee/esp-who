@@ -21,7 +21,28 @@ static void task_process_handler(void *arg)
     {
         if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
         {
-            esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, frame->width, frame->height, (uint16_t *)frame->buf);
+            esp_lcd_panel_draw_bitmap(panel_handle, 0, 0/*(BOARD_LCD_V_RES - frame->height)/2*/, frame->width, frame->height, (uint16_t *)frame->buf);
+           /* int yy, ii;
+             for (yy =0 , ii = 0 ;  ii<6 ; yy += 2 , ii++ ){
+                esp_lcd_panel_draw_bitmap(panel_handle, 0, yy, frame->width, yy+1, &((uint16_t *)frame->buf)[ii*frame->width]);
+                esp_lcd_panel_draw_bitmap(panel_handle, 0, yy+1, frame->width, yy+2, &((uint16_t *)frame->buf)[ii*frame->width]);
+            }
+           
+            for ( ;   ii < 240 -20  ; yy += 1 , ii++ ){
+                esp_lcd_panel_draw_bitmap(panel_handle, 0, yy, frame->width, yy+1, &((uint16_t *)frame->buf)[ii*frame->width]);
+                if(ii%4 ==0)
+                {
+                  yy++;
+                  esp_lcd_panel_draw_bitmap(panel_handle, 0, yy, frame->width, yy+1, &((uint16_t *)frame->buf)[ii*frame->width]);
+                }
+               
+            }
+            
+            for ( ;  ii< 240 ; yy += 2 , ii++ ){
+                esp_lcd_panel_draw_bitmap(panel_handle, 0, yy, frame->width, yy+1, &((uint16_t *)frame->buf)[ii*frame->width]);
+                esp_lcd_panel_draw_bitmap(panel_handle, 0, yy+1, frame->width, yy+2, &((uint16_t *)frame->buf)[ii*frame->width]);
+            }*/
+            
             if (xQueueFrameO)
             {
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
@@ -101,7 +122,7 @@ void app_lcd_draw_wallpaper()
         return;
     }
     memcpy(pixels, logo_en_240x240_lcd, (logo_en_240x240_lcd_width * logo_en_240x240_lcd_height) * sizeof(uint16_t));
-    esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, logo_en_240x240_lcd_width, logo_en_240x240_lcd_height, (uint16_t *)pixels);
+    esp_lcd_panel_draw_bitmap(panel_handle, 0, (BOARD_LCD_V_RES - logo_en_240x240_lcd_height)/2 , logo_en_240x240_lcd_width, logo_en_240x240_lcd_height, (uint16_t *)pixels);
     heap_caps_free(pixels);
 }
 
