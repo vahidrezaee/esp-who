@@ -68,7 +68,7 @@ static void rx_task(void *arg)
             }
             else if(strcmp(data,"recognize0")==0)
             {
-                 recognizer_state = RECOGNIZE;
+                 recognizer_state = DETECT;
             }
             else if(strcmp(data,"delall7890")==0)
             {
@@ -81,6 +81,10 @@ static void rx_task(void *arg)
             else if(strcmp(data,"thresh_dwn")==0)
             {
                  recognizer_state = THRESH_DOWN;
+            }
+            else if(strcmp(data,"goto_ide90")==0)
+            {
+                 recognizer_state = GOTO_IDLE;
             }
             else{
                 char *pos = strstr(data , "delete");

@@ -14,6 +14,7 @@ typedef enum
     DELETE_ALL,
     THRESH_DOWN,
     THRESH_UP,
+    GOTO_IDLE,
     DELETE,
    
 } recognizer_state_t;

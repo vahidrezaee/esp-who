@@ -367,7 +367,7 @@ static void task_process_handler(void *arg)
             ESP_LOGI("CAM1","timeout %d",timeout );
         }
         xSemaphoreTake(xMutex, portMAX_DELAY);
-        if( gEvent == DETECT)
+        if( gEvent == DETECT )
         {
             timeout = 0;
         }
@@ -377,14 +377,13 @@ static void task_process_handler(void *arg)
         }
         if(gEvent != DETECT )
         {
-             
             timeout++;
         }
-        if(timeout > 200)
+        if(timeout > 200 && _gEvent == ENROLL)
         {
             ESP_LOGE("timeout","cpture old %dnew cmd %d\n",_gEvent,gEvent );
             ESP_LOGI("timeout","timeout %d",timeout );
-            gEvent = DETECT;
+            gEvent = GOTO_IDLE;
             timeout = 0;
             char  data_str[10] = { 't','i','m','e','o','u','t','0','0','0'};  
             uart_write_bytes(UART, data_str, 10);
@@ -394,7 +393,7 @@ static void task_process_handler(void *arg)
         xSemaphoreGive(xMutex);
 
 
-        if (_gEvent)
+        if (_gEvent != IDLE )
         {
             bool is_detected = false;
 
@@ -520,6 +519,8 @@ static void task_process_handler(void *arg)
                              ESP_LOGI("DELALL","Done!");
                         }
                         break;
+                    case GOTO_IDLE:
+                            break;
                     default:
                         vTaskDelay(10);
                         recognize_result.id = recognizer->delete_id(_gEvent-(int)DELETE,true);
