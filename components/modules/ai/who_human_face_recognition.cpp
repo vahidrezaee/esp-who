@@ -462,10 +462,10 @@ static void task_process_handler(void *arg)
                                 new_str = "enroll" + new_str;
                                 uart_write_bytes(UART, new_str.c_str(), new_str.length());
                                 
-                               
+                                ESP_LOGI("enroll" ,"new_str: "+new_str);
                                
                                 xSemaphoreTake(xMutex, portMAX_DELAY);
-                                gEvent = DETECT;
+                                gEvent = GOTO_IDLE;
                                 xSemaphoreGive(xMutex);
                                 frame_show_state = SHOW_STATE_ENROLL;
                                 ESP_LOGI("enroll" ,"enroll ID: %d",  recognize_result);
@@ -512,7 +512,7 @@ static void task_process_handler(void *arg)
                             
                              frame_show_state = SHOW_STATE_DELETE_ALL;
                              xSemaphoreTake(xMutex, portMAX_DELAY);
-                             gEvent = DETECT;                
+                             gEvent = GOTO_IDLE;                
                              xSemaphoreGive(xMutex);
                             char  data_str[10] = { 'a','l','l','d','e','l','e','t','e','d'};  
                             uart_write_bytes(UART, data_str, 10); 
@@ -540,7 +540,7 @@ static void task_process_handler(void *arg)
                         ESP_LOGE("DELETE", "% d IDs left", recognizer->get_enrolled_id_num());
                         frame_show_state = SHOW_STATE_DELETE;
                         xSemaphoreTake(xMutex, portMAX_DELAY);
-                        gEvent = DETECT;
+                        gEvent = GOTO_IDLE;
                         xSemaphoreGive(xMutex);
                         ESP_LOGE("DELETE", "Done");
                         break;
