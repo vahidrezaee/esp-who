@@ -90,8 +90,8 @@ void register_camera(const pixformat_t pixel_fromat,
     }
        s->set_gain_ctrl(s, 1);                       // auto gain on
        s->set_exposure_ctrl(s, 1);                   // auto exposure on
-       s->set_awb_gain(s, 1);                        // Auto White Balance enable (0 or 1)
-       s->set_brightness(s, 1); 
+      s->set_awb_gain(s, 1);                        // Auto White Balance enable (0 or 1)
+      s->set_brightness(s, 2); 
     // s->set_brightness(s, -2);     // -2 to 2
     // s->set_contrast(s, 0);       // -2 to 2
     // s->set_saturation(s, 0);     // -2 to 2
@@ -104,7 +104,7 @@ void register_camera(const pixformat_t pixel_fromat,
     // s->set_ae_level(s, 0);       // -2 to 2
     // s->set_aec_value(s, 300);    // 0 to 1200
     // s->set_gain_ctrl(s, 1);      // 0 = disable , 1 = enable
-    // s->set_agc_gain(s, 0);       // 0 to 30
+     s->set_agc_gain(s, 30);       // 0 to 30
     // s->set_gainceiling(s, (gainceiling_t)0);  // 0 to 6
     // s->set_bpc(s, 0);            // 0 = disable , 1 = enable
     // s->set_wpc(s, 1);            // 0 = disable , 1 = enable

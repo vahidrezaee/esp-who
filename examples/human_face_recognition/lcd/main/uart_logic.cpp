@@ -61,7 +61,7 @@ static void rx_task(void *arg)
             static recognizer_state_t recognizer_state = IDLE;
            // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
           //  uart_write_bytes(UART, data, rxBytes);
-            if(strcmp(data,"enroll7590")==0)
+            if(strcmp(data,"enroll7890")==0)
             {// ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
 
                  recognizer_state = ENROLL;

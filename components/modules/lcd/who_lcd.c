@@ -21,8 +21,9 @@ static void task_process_handler(void *arg)
     {
         if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
         {
-            esp_lcd_panel_draw_bitmap(panel_handle, 0, 0/*(BOARD_LCD_V_RES - frame->height)/2*/, frame->width, frame->height, (uint16_t *)frame->buf);
-           /* int yy, ii;
+             // ESP_LOGI(TAG, "Draw image\n");
+          //  esp_lcd_panel_draw_bitmap(panel_handle, 0, 0/*(BOARD_LCD_V_RES - frame->height)/2*/, frame->width, frame->height, (uint16_t *)frame->buf);
+            int yy, ii;
              for (yy =0 , ii = 0 ;  ii<6 ; yy += 2 , ii++ ){
                 esp_lcd_panel_draw_bitmap(panel_handle, 0, yy, frame->width, yy+1, &((uint16_t *)frame->buf)[ii*frame->width]);
                 esp_lcd_panel_draw_bitmap(panel_handle, 0, yy+1, frame->width, yy+2, &((uint16_t *)frame->buf)[ii*frame->width]);
@@ -41,8 +42,8 @@ static void task_process_handler(void *arg)
             for ( ;  ii< 240 ; yy += 2 , ii++ ){
                 esp_lcd_panel_draw_bitmap(panel_handle, 0, yy, frame->width, yy+1, &((uint16_t *)frame->buf)[ii*frame->width]);
                 esp_lcd_panel_draw_bitmap(panel_handle, 0, yy+1, frame->width, yy+2, &((uint16_t *)frame->buf)[ii*frame->width]);
-            }*/
-            
+            }
+        
             if (xQueueFrameO)
             {
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);

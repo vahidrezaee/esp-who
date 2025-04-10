@@ -49,7 +49,7 @@ typedef enum
 #define RGB565_MASK_RED 0xF800
 #define RGB565_MASK_GREEN 0x07E0
 #define RGB565_MASK_BLUE 0x001F
-#define FRAME_DELAY_NUM 16
+#define FRAME_DELAY_NUM 52
 #define NAME_SPACE "ddi"
 #define KEY "I"
 #define KEY_em "E"
@@ -340,7 +340,7 @@ static void task_process_handler(void *arg)
 #endif
 #endif
     show_state_t frame_show_state = SHOW_STATE_IDLE;
-    recognizer_state_t _gEvent;
+    recognizer_state_t _gEvent = DETECT;
     recognizer->set_thresh(0.70);
     int ret = recognizer->set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
     int partition_result = recognizer->set_ids_from_flash();
@@ -357,13 +357,40 @@ static void task_process_handler(void *arg)
 	read_faces(recognizer);
 	ESP_LOGE("read_face","\nread_face\n");
     */
-	int ii =0;
+	int timeout =0;
+     
     while (true)
     {
-        
+        if(_gEvent == DETECT && gEvent != DETECT )
+        {
+            ESP_LOGE("CAM1","cpture old %dnew cmd %d\n",_gEvent,gEvent );
+            ESP_LOGI("CAM1","timeout %d",timeout );
+        }
         xSemaphoreTake(xMutex, portMAX_DELAY);
+        if( gEvent == DETECT)
+        {
+            timeout = 0;
+        }
+        if(_gEvent == DETECT && gEvent != DETECT )
+        {
+            timeout = 0;
+        }
+        if(gEvent != DETECT )
+        {
+             
+            timeout++;
+        }
+        if(timeout > 200)
+        {
+            ESP_LOGE("timeout","cpture old %dnew cmd %d\n",_gEvent,gEvent );
+            ESP_LOGI("timeout","timeout %d",timeout );
+            gEvent = DETECT;
+            timeout = 0;
+            char  data_str[10] = { 't','i','m','e','o','u','t','0','0','0'};  
+            uart_write_bytes(UART, data_str, 10);
+        }
+
         _gEvent = gEvent;
-        gEvent = DETECT;
         xSemaphoreGive(xMutex);
 
 
@@ -394,16 +421,21 @@ static void task_process_handler(void *arg)
                             
                             print_detection_result(detect_results);
                             if (recognize_result.id > 0){
-                                char  data_str[10] = { 'g','r','a','n','t','e','d','0','0','0'};
+                                char  data_str[10] = { 'g','r','a','n','t','e','0','0','0','0'};
                                 data_str [9] =  '0' + recognize_result.id %10 ;
                                 data_str [8] =  '0' + (recognize_result.id /10)%10 ;
                                 data_str [7] =  '0' + (recognize_result.id /100)%10 ;
-                                
+                                data_str [6] =  '0' + (recognize_result.id /1000)%10 ;
+                                ESP_LOGE("detect","granted %d",recognize_result.id );
                                 uart_write_bytes(UART, data_str, 10);
                                // ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                             }
-                          /*  else
-                                ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);*/
+                            else{
+                                    char  data_str[10] = { 'w','h','o','0','0','0','0','0','0','0'};  
+                                    uart_write_bytes(UART, data_str, 10);
+                                    ESP_LOGE("detect"," who? %d" );
+                                 }
+                               
                             frame_show_state = SHOW_STATE_RECOGNIZE;
                         }
                         
@@ -424,12 +456,25 @@ static void task_process_handler(void *arg)
                         if(is_detected)
                         {
                         //name = "vahid" + std::to_string(ii++);//std::to_string(42 + recognizer->get_enrolled_ids().back().id);
-                        recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint, "", true);
-                      //  ESP_LOGW("ENROLL", "ID %d with name  is enrolled", recognizer->get_enrolled_ids().back().id);
-                        frame_show_state = SHOW_STATE_ENROLL;
+                        auto recognize_result = recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint, "", true);
+                        if (recognize_result > 0){
+                                string old_str = ""+ recognize_result;
+                                auto new_str = std::string(4 - std::min(4, (int)old_str.length()), '0') + old_str;
+                                new_str = "enroll" + new_str;
+                                uart_write_bytes(UART, new_str.c_str(), new_str.length());
+                                
+                               
+                               
+                                xSemaphoreTake(xMutex, portMAX_DELAY);
+                                gEvent = DETECT;
+                                xSemaphoreGive(xMutex);
+                                frame_show_state = SHOW_STATE_ENROLL;
+                                ESP_LOGI("enroll" ,"enroll ID: %d",  recognize_result);
+                            }
+                        
                  //       write_faces(recognizer);
                        /* = recognizer->write_ids_to_flash();
-                        ESP_LOGE("Wrute", "ret % d ", ret);*/
+                    //    ESP_LOGE("Wrute", "ret % d ", ret);
                         }
                         break;
 
@@ -449,9 +494,10 @@ static void task_process_handler(void *arg)
                                 uart_write_bytes(UART, new_str.c_str(), new_str.length());
                                 ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                             }
+                            */
                          /*   else
-                                ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);*/
-                            frame_show_state = SHOW_STATE_RECOGNIZE;
+                                ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
+                            frame_show_state = SHOW_STATE_RECOGNIZE;*/
                         }
                         break;
                     case DELETE_ALL:
@@ -459,12 +505,19 @@ static void task_process_handler(void *arg)
                             auto faces = recognizer->get_enrolled_ids();
                             for (auto & face : faces)
                             {
-                                ESP_LOGI("DELALL"," id %d deleted",face.id);
+                                ESP_LOGI("DELALL"," id %d deleted\n",face.id);
                                 recognizer->delete_id(face.id,true);
                             }
-                             ESP_LOGI("DELALL"," thershold %f\n\n",recognizer->get_thresh());
+                         //    ESP_LOGI("DELALL"," thershold %f\n\n",recognizer->get_thresh());
                   //           write_faces(recognizer);
+                            
                              frame_show_state = SHOW_STATE_DELETE_ALL;
+                             xSemaphoreTake(xMutex, portMAX_DELAY);
+                             gEvent = DETECT;                
+                             xSemaphoreGive(xMutex);
+                            char  data_str[10] = { 'a','l','l','d','e','l','e','t','e','d'};  
+                            uart_write_bytes(UART, data_str, 10); 
+                             ESP_LOGI("DELALL","Done!");
                         }
                         break;
                     default:
@@ -474,11 +527,21 @@ static void task_process_handler(void *arg)
                         {
                             recognize_result.id = _gEvent-(int)DELETE;
                 //            write_faces(recognizer);
+                            char  data_str[10] = { 'r','e','m','o','v','e','0','0','0','0'};  
+                            data_str [9] =  '0' + recognize_result.id %10 ;
+                            data_str [8] =  '0' + (recognize_result.id /10)%10 ;
+                            data_str [7] =  '0' + (recognize_result.id /100)%10 ;
+                            data_str [6] =  '0' + (recognize_result.id /1000)%10 ;
+                                                      
+                            uart_write_bytes(UART, data_str, 10);  
                         }
                         ESP_LOGE("DELETE", "id %d del",_gEvent-(int)DELETE);
                         ESP_LOGE("DELETE", "% d IDs left", recognizer->get_enrolled_id_num());
                         frame_show_state = SHOW_STATE_DELETE;
-
+                        xSemaphoreTake(xMutex, portMAX_DELAY);
+                        gEvent = DETECT;
+                        xSemaphoreGive(xMutex);
+                        ESP_LOGE("DELETE", "Done");
                         break;
                        // ret = recognizer->write_ids_to_flash();
                       //  ESP_LOGE("Wrute", "ret % d ", ret);
@@ -562,7 +625,7 @@ static void task_process_handler(void *arg)
                         if (recognize_result.id > 0)
                             rgb_printf(frame, RGB565_MASK_GREEN, "ID %d", recognize_result.id);
                         else
-                            rgb_print(frame, RGB565_MASK_RED, "who ?");
+                            rgb_print(frame, RGB565_MASK_RED, "Not Recognized");
                         break;
 
                     case SHOW_STATE_ENROLL:
@@ -587,7 +650,7 @@ static void task_process_handler(void *arg)
 #endif
                     draw_detection_result((uint16_t *)frame->buf, frame->height, frame->width, detect_results);
                 }
-            }
+            } 
 
             if (xQueueFrameO)
             {
