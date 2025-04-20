@@ -18,6 +18,7 @@ static const int RX_BUF_SIZE = 1024;
 int num = 0;
 
 static QueueHandle_t xQueueKeyStateO = NULL;
+static QueueHandle_t XUartToLcdStateO = NULL;
 
 void init(void) 
 {
@@ -63,22 +64,22 @@ static void rx_task(void *arg)
         if (rxBytes > 0) {
             data[rxBytes] = 0;
             static recognizer_state_t recognizer_state = IDLE;
+            static recognizer_state_t lcd_state = IDLE;
            // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
           //  uart_write_bytes(UART, data, rxBytes);
-            if(strcmp(data,"lcd_off890"))
+            if(strcmp(data,"lcd_off890") == 0)
             {
-                esp_lcd_panel_dev_config_t panel_config = {
-                        .reset_gpio_num = BOARD_LCD_RST,
-                        .rgb_endian = LCD_RGB_ENDIAN_RGB,
-                        .bits_per_pixel = 16,
-                    };
-
-                // turn on display
-                esp_lcd_panel_disp_on_off(panel_handle, true);
+                 ESP_LOGE("RX", "LCD OFF %s\n\r",data);
+                 lcd_state = LCD_OFF;
+                 xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
+                 
             }
-            if(strcmp(data,"lcd_on7890"))
+            if(strcmp(data,"lcd_on7890") == 0)
             {
-
+                  ESP_LOGE("RX", "LCD ON %s\n\r",data);
+                  lcd_state = LCD_ON;
+                  xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY); 
+                  
             }
             if(strcmp(data,"enroll7890")==0)
             {// ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
@@ -127,9 +128,10 @@ static void rx_task(void *arg)
 }
 
 
-void register_uart( const QueueHandle_t key_state_o)
+void register_uart( const QueueHandle_t key_state_o, const QueueHandle_t uart_lcd_state_o)
 {
     xQueueKeyStateO = key_state_o;
+    XUartToLcdStateO = uart_lcd_state_o;
     init();
     ESP_LOGI("RX", "uart initialize");
     xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);

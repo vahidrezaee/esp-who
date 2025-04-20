@@ -6,19 +6,49 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
 
+typedef enum
+{
+    IDLE = 0,
+    DETECT,
+    ENROLL,
+    RECOGNIZE,
+    DELETE_ALL,
+    THRESH_DOWN,
+    THRESH_UP,
+    GOTO_IDLE,
+    LCD_OFF,
+    LCD_ON,
+    DELETE,
+   
+} recognizer_state_t;
 static const char *TAG = "who_lcd";
 
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static QueueHandle_t xQueueFrameI = NULL;
+static QueueHandle_t xQueueUartI  = NULL;
 static QueueHandle_t xQueueFrameO = NULL;
 static bool gReturnFB = true;
-
+static recognizer_state_t gEvent = DETECT;
 static void task_process_handler(void *arg)
 {
     camera_fb_t *frame = NULL;
-
+    recognizer_state_t _gEvent;
     while (true)
     {
+      
+            if(gEvent == LCD_OFF)
+            {
+                gEvent = DETECT;
+                ESP_LOGI(TAG, "LCD OFF");
+                esp_lcd_panel_disp_on_off(panel_handle, false);      
+            }
+            if(gEvent == LCD_ON)
+            {
+                gEvent = DETECT;
+                ESP_LOGI(TAG, "LCD ON");
+                esp_lcd_panel_disp_on_off(panel_handle, true);
+            }
+        
         if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
         {
              // ESP_LOGI(TAG, "Draw image\n");
@@ -59,8 +89,16 @@ static void task_process_handler(void *arg)
         }
     }
 }
-
-esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb)
+static void task_event_handler(void *arg)
+{
+    recognizer_state_t _gEvent;
+    while (true)
+    {
+        xQueueReceive(xQueueUartI, &(_gEvent), portMAX_DELAY);
+        gEvent = _gEvent;
+    }
+}
+esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb,const QueueHandle_t uartQueue_i)
 {
     ESP_LOGI(TAG, "Initialize SPI bus");
     spi_bus_config_t bus_conf = {
@@ -90,6 +128,7 @@ esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o,
     // ESP_LOGI(TAG, "Install ST7789 panel driver");
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = BOARD_LCD_RST,
+        .res
         .rgb_endian = LCD_RGB_ENDIAN_RGB,
         .bits_per_pixel = 16,
     };
@@ -106,10 +145,14 @@ esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o,
     app_lcd_draw_wallpaper();
     vTaskDelay(pdMS_TO_TICKS(200));
 
+    xQueueUartI = uartQueue_i;
     xQueueFrameI = frame_i;
     xQueueFrameO = frame_o;
     gReturnFB = return_fb;
     xTaskCreatePinnedToCore(task_process_handler, TAG, 4 * 1024, NULL, 5, NULL, 0);
+
+    if (xQueueUartI)
+        xTaskCreatePinnedToCore(task_event_handler, TAG, 4 * 1024, NULL, 5, NULL, 1);
 
     return ESP_OK;
 }

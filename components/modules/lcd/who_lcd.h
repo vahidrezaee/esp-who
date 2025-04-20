@@ -27,7 +27,7 @@ extern "C"
 {
 #endif
 
-    esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb);
+    esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb,const QueueHandle_t uart_i);
 
     void app_lcd_draw_wallpaper();
     void app_lcd_set_color(int color);

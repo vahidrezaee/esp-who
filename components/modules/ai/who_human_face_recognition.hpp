@@ -15,6 +15,8 @@ typedef enum
     THRESH_DOWN,
     THRESH_UP,
     GOTO_IDLE,
+    LCD_OFF,
+    LCD_ON,
     DELETE,
    
 } recognizer_state_t;
