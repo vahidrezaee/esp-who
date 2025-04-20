@@ -379,6 +379,10 @@ static void task_process_handler(void *arg)
         {
             timeout++;
         }
+        if(_gEvent != ENROLL && gEvent == ENROLL )
+        {
+            timeout = 0;
+        }
         if(timeout > 200 && _gEvent == ENROLL)
         {
             ESP_LOGE("timeout","cpture old %dnew cmd %d\n",_gEvent,gEvent );
@@ -455,14 +459,13 @@ static void task_process_handler(void *arg)
                         if(is_detected)
                         {
                         //name = "vahid" + std::to_string(ii++);//std::to_string(42 + recognizer->get_enrolled_ids().back().id);
-                        auto recognize_result = recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint, "", true);
+                        int recognize_result = recognizer->enroll_id((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3}, detect_results.front().keypoint, "", true);
                         if (recognize_result > 0){
-                                string old_str = ""+ recognize_result;
-                                auto new_str = std::string(4 - std::min(4, (int)old_str.length()), '0') + old_str;
-                                new_str = "enroll" + new_str;
-                                uart_write_bytes(UART, new_str.c_str(), new_str.length());
+                                char new_str[15];
+                                std::sprintf(new_str, "enroll%04d", (short)recognize_result);
+                                uart_write_bytes(UART, new_str, 10);
                                 
-                                ESP_LOGI("enroll" ,"new_str: "+new_str);
+                                ESP_LOGI("enroll" ,"new_str \'%s\'" ,new_str);
                                
                                 xSemaphoreTake(xMutex, portMAX_DELAY);
                                 gEvent = GOTO_IDLE;
@@ -493,8 +496,7 @@ static void task_process_handler(void *arg)
                                 uart_write_bytes(UART, new_str.c_str(), new_str.length());
                                 ESP_LOGI("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                             }
-                            */
-                         /*   else
+                             else
                                 ESP_LOGE("RECOGNIZE", "Similarity: %f, Match ID: %d", recognize_result.similarity, recognize_result.id);
                             frame_show_state = SHOW_STATE_RECOGNIZE;*/
                         }
@@ -655,7 +657,6 @@ static void task_process_handler(void *arg)
 
             if (xQueueFrameO)
             {
-
                 xQueueSend(xQueueFrameO, &frame, portMAX_DELAY);
             }
             else if (gReturnFB)

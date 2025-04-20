@@ -4,6 +4,10 @@
 #include "esp_log.h"
 #include "uart_logic.hpp"
 #include "who_human_face_recognition.hpp"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_vendor.h"
+#include "esp_lcd_panel_ops.h"
+#include "who_lcd.h"
 static const int RX_BUF_SIZE = 1024;
 
 #define TXD_PIN (39)
@@ -61,6 +65,21 @@ static void rx_task(void *arg)
             static recognizer_state_t recognizer_state = IDLE;
            // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
           //  uart_write_bytes(UART, data, rxBytes);
+            if(strcmp(data,"lcd_off890"))
+            {
+                esp_lcd_panel_dev_config_t panel_config = {
+                        .reset_gpio_num = BOARD_LCD_RST,
+                        .rgb_endian = LCD_RGB_ENDIAN_RGB,
+                        .bits_per_pixel = 16,
+                    };
+
+                // turn on display
+                esp_lcd_panel_disp_on_off(panel_handle, true);
+            }
+            if(strcmp(data,"lcd_on7890"))
+            {
+
+            }
             if(strcmp(data,"enroll7890")==0)
             {// ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
 
