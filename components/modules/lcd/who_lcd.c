@@ -5,7 +5,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
-
+#include "driver/gpio.h"
 typedef enum
 {
     IDLE = 0,
@@ -40,13 +40,15 @@ static void task_process_handler(void *arg)
             {
                 gEvent = DETECT;
                 ESP_LOGI(TAG, "LCD OFF");
-                esp_lcd_panel_disp_on_off(panel_handle, false);      
+                esp_lcd_panel_disp_on_off(panel_handle, false);   
+                gpio_set_level(BOARD_LCD_BL, 1);    
             }
             if(gEvent == LCD_ON)
             {
                 gEvent = DETECT;
                 ESP_LOGI(TAG, "LCD ON");
                 esp_lcd_panel_disp_on_off(panel_handle, true);
+                gpio_set_level(BOARD_LCD_BL, 0); 
             }
         
         if (xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
@@ -100,6 +102,20 @@ static void task_event_handler(void *arg)
 }
 esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o, const bool return_fb,const QueueHandle_t uartQueue_i)
 {
+    gpio_config_t io_conf = {};
+    //disable interrupt
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    //set as output mode
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    //bit mask of the pins that you want to set,e.g.GPIO18/19
+    io_conf.pin_bit_mask = GPIO_OUTPUT_PIN_SEL;
+    //disable pull-down mode
+    io_conf.pull_down_en = 0;
+    //disable pull-up mode
+    io_conf.pull_up_en = 0;
+    //configure GPIO with the given settings
+    gpio_config(&io_conf);
+
     ESP_LOGI(TAG, "Initialize SPI bus");
     spi_bus_config_t bus_conf = {
         .sclk_io_num = BOARD_LCD_SCK,
@@ -128,7 +144,6 @@ esp_err_t register_lcd(const QueueHandle_t frame_i, const QueueHandle_t frame_o,
     // ESP_LOGI(TAG, "Install ST7789 panel driver");
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = BOARD_LCD_RST,
-        .res
         .rgb_endian = LCD_RGB_ENDIAN_RGB,
         .bits_per_pixel = 16,
     };

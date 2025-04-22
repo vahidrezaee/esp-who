@@ -52,15 +52,15 @@ static void rx_task(void *arg)
 {
     
     esp_log_level_set("RX", ESP_LOG_INFO);
-    char* data = (char*) malloc(RX_BUF_SIZE+1);
+    char* data = (char*) malloc(1024+1);
     uart_write_bytes(UART, "Ready67890", strlen("Ready67890"));
     ESP_LOGI("RX", "send data Read \n\r");
      int rxBytes;
      int temppp = 0;
     while (1) {
   
-       rxBytes = uart_read_bytes(UART, data, RX_BUF_SIZE, 500 / portTICK_PERIOD_MS);
-        // ESP_LOGI("RX", "Read %d bytes", rxBytes);
+       rxBytes = uart_read_bytes(UART, data, 10,50000 / portTICK_PERIOD_MS );
+         ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
         if (rxBytes > 0) {
             data[rxBytes] = 0;
             static recognizer_state_t recognizer_state = IDLE;
@@ -74,14 +74,14 @@ static void rx_task(void *arg)
                  xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
                  
             }
-            if(strcmp(data,"lcd_on7890") == 0)
+            else if(strcmp(data,"lcd_on7890") == 0)
             {
                   ESP_LOGE("RX", "LCD ON %s\n\r",data);
                   lcd_state = LCD_ON;
                   xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY); 
                   
             }
-            if(strcmp(data,"enroll7890")==0)
+            else if(strcmp(data,"enroll7890")==0)
             {// ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
 
                  recognizer_state = ENROLL;
@@ -104,6 +104,7 @@ static void rx_task(void *arg)
             }
             else if(strcmp(data,"goto_ide90")==0)
             {
+                ESP_LOGE("RX", "go IDLE %s\n\r",data);
                  recognizer_state = GOTO_IDLE;
             }
             else{

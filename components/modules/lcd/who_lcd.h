@@ -21,7 +21,7 @@
 #define BOARD_LCD_CMD_BITS 8
 #define BOARD_LCD_PARAM_BITS 8
 #define LCD_HOST SPI2_HOST
-
+#define GPIO_OUTPUT_PIN_SEL (1ULL<<BOARD_LCD_BL)
 #ifdef __cplusplus
 extern "C"
 {
