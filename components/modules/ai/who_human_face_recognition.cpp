@@ -341,10 +341,10 @@ static void task_process_handler(void *arg)
 #endif
     show_state_t frame_show_state = SHOW_STATE_IDLE;
     recognizer_state_t _gEvent = DETECT;
-    recognizer->set_thresh(0.80);
+    recognizer->set_thresh(0.90);
     int ret = recognizer->set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
     int partition_result = recognizer->set_ids_from_flash();
-    ESP_LOGE("ENROLL", "partitoin %d ids %d",ret,partition_result);
+    ESP_LOGE("ENROLL", "thresh %f partitoin %d ids %d", recognizer->get_thresh(),ret,partition_result);
  /*   
 	esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
