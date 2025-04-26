@@ -503,12 +503,13 @@ static void task_process_handler(void *arg)
                         break;
                     case DELETE_ALL:
                         {
-                            auto faces = recognizer->get_enrolled_ids();
+                            recognizer->clear_id(true);
+                            /*auto faces = recognizer->get_enrolled_ids();
                             for (auto & face : faces)
                             {
                                 ESP_LOGI("DELALL"," id %d deleted\n",face.id);
                                 recognizer->delete_id(face.id,true);
-                            }
+                            }*/
                          //    ESP_LOGI("DELALL"," thershold %f\n\n",recognizer->get_thresh());
                   //           write_faces(recognizer);
                             

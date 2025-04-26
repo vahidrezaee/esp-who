@@ -59,38 +59,38 @@ static void rx_task(void *arg)
      int temppp = 0;
     while (1) {
   
-       rxBytes = uart_read_bytes(UART, data, 10,50000 / portTICK_PERIOD_MS );
+       rxBytes = uart_read_bytes(UART, data, 10,5000 / portTICK_PERIOD_MS );
          ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
         if (rxBytes > 0) {
-            data[rxBytes] = 0;
+            data[rxBytes ] = 0;
             static recognizer_state_t recognizer_state = IDLE;
             static recognizer_state_t lcd_state = IDLE;
            // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
           //  uart_write_bytes(UART, data, rxBytes);
-            if(strcmp(data,"lcd_off890") == 0)
+            if(strstr(data,"off") )
             {
                  ESP_LOGE("RX", "LCD OFF %s\n\r",data);
                  lcd_state = LCD_OFF;
                  xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
                  
             }
-            else if(strcmp(data,"lcd_on7890") == 0)
+            else if(strstr(data,"onL") )
             {
                   ESP_LOGE("RX", "LCD ON %s\n\r",data);
                   lcd_state = LCD_ON;
                   xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY); 
                   
             }
-            else if(strcmp(data,"enroll7890")==0)
+            else if(strstr(data,"enr"))
             {// ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
 
                  recognizer_state = ENROLL;
             }
-            else if(strcmp(data,"recognize0")==0)
+            else if(strstr(data,"rec"))
             {
                  recognizer_state = DETECT;
             }
-            else if(strcmp(data,"delall7890")==0)
+            else if(strstr(data,"rem"))
             {
                  recognizer_state = DELETE_ALL;
             }
@@ -102,18 +102,19 @@ static void rx_task(void *arg)
             {
                  recognizer_state = THRESH_DOWN;
             }
-            else if(strcmp(data,"goto_ide90")==0)
+            else if(strstr(data,"got"))
             {
                 ESP_LOGE("RX", "go IDLE %s\n\r",data);
                  recognizer_state = GOTO_IDLE;
             }
             else{
-                char *pos = strstr(data , "delete");
+                char *pos = strstr(data , "del");
                 if (pos != NULL && strlen(data) ==10)
                 {
                     char number [5];
-                    strcpy(number , data+ strlen("delete")+1 );
+                    strncpy(number , data+ strlen("del")+1,4 );
                     int num = atoi(number) +(int)(DELETE );
+                    ESP_LOGI("RX", "str \"%s\" del %d ",number, atoi(number) );
                     recognizer_state = (recognizer_state_t)num  ;
                      ESP_LOGI("RX", "delete %d ", recognizer_state);
                 }
