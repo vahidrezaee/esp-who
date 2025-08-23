@@ -68,6 +68,7 @@ static void task_event_handler(void *arg)
 void register_motion_detection(QueueHandle_t frame_i, QueueHandle_t event,
                                QueueHandle_t result, QueueHandle_t frame_o)
 {
+   
     xQueueFrameI = frame_i;
     xQueueFrameO = frame_o;
     xQueueEvent = event;

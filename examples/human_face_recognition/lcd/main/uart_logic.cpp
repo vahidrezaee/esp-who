@@ -51,32 +51,32 @@ static void tx_task(void *arg)
 static void rx_task(void *arg)
 {
     
-    esp_log_level_set("RX", ESP_LOG_INFO);
+   // esp_log_level_set("RX", ESP_LOG_INFO);
     char* data = (char*) malloc(1024+1);
     uart_write_bytes(UART, "Ready67890", strlen("Ready67890"));
-    ESP_LOGI("RX", "send data Read \n\r");
+   // ESP_LOGI("RX", "send data Read \n\r");
      int rxBytes;
-     int temppp = 0;
     while (1) {
   
        rxBytes = uart_read_bytes(UART, data, 10,5000 / portTICK_PERIOD_MS );
-         ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
+        // ESP_LOGI("RX", "1Read %d bytes str \"%s\"", rxBytes,data);
         if (rxBytes > 0) {
             data[rxBytes ] = 0;
+            //ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
             static recognizer_state_t recognizer_state = IDLE;
             static recognizer_state_t lcd_state = IDLE;
            // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
           //  uart_write_bytes(UART, data, rxBytes);
             if(strstr(data,"off") )
             {
-                 ESP_LOGE("RX", "LCD OFF %s\n\r",data);
+            //     ESP_LOGE("RX", "LCD OFF %s\n\r",data);
                  lcd_state = LCD_OFF;
                  xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
                  
             }
             else if(strstr(data,"onL") )
             {
-                  ESP_LOGE("RX", "LCD ON %s\n\r",data);
+           //       ESP_LOGE("RX", "LCD ON %s\n\r",data);
                   lcd_state = LCD_ON;
                   xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY); 
                   
@@ -104,7 +104,7 @@ static void rx_task(void *arg)
             }
             else if(strstr(data,"got"))
             {
-                ESP_LOGE("RX", "go IDLE %s\n\r",data);
+           //     ESP_LOGE("RX", "go IDLE %s\n\r",data);
                  recognizer_state = GOTO_IDLE;
             }
             else{
@@ -113,10 +113,11 @@ static void rx_task(void *arg)
                 {
                     char number [5];
                     strncpy(number , data+ strlen("del")+1,4 );
+                    number[4] = '\0'; // Ensure it's always null-terminated
                     int num = atoi(number) +(int)(DELETE );
-                    ESP_LOGI("RX", "str \"%s\" del %d ",number, atoi(number) );
+             //       ESP_LOGI("RX", "str \"%s\" del %d ",number, atoi(number) );
                     recognizer_state = (recognizer_state_t)num  ;
-                     ESP_LOGI("RX", "delete %d ", recognizer_state);
+             //        ESP_LOGI("RX", "delete %d ", recognizer_state);
                 }
             }
             if(recognizer_state != IDLE)
@@ -135,8 +136,8 @@ void register_uart( const QueueHandle_t key_state_o, const QueueHandle_t uart_lc
     xQueueKeyStateO = key_state_o;
     XUartToLcdStateO = uart_lcd_state_o;
     init();
-    ESP_LOGI("RX", "uart initialize");
-    xTaskCreate(rx_task, "uart_rx_task", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
+ //   ESP_LOGI("RX", "uart initialize");
+    xTaskCreate(rx_task, "uart_rx_task", 1024*8, NULL, configMAX_PRIORITIES-1, NULL);
     // ESP_LOGI("RX", "uart rx");
     //xTaskCreate(tx_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-2, NULL);
     //ESP_LOGI("RX", "uart tx");
