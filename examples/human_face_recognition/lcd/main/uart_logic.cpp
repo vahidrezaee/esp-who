@@ -62,7 +62,7 @@ static void rx_task(void *arg)
         // ESP_LOGI("RX", "1Read %d bytes str \"%s\"", rxBytes,data);
         if (rxBytes > 0) {
             data[rxBytes ] = 0;
-            //ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
+            ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
             static recognizer_state_t recognizer_state = IDLE;
             static recognizer_state_t lcd_state = IDLE;
            // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
