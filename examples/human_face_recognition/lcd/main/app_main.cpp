@@ -5,7 +5,7 @@
 #include "event_logic.hpp"
 #include "who_adc_button.h"
 #include "uart_logic.hpp"
-
+/*v 1.0.2*/
 static QueueHandle_t xQueueAIFrame = NULL;
 static QueueHandle_t xQueueLCDFrame = NULL;
 static QueueHandle_t xQueueKeyState = NULL;
