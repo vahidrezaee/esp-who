@@ -1,24 +1,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "esp_log.h"
-#include "uart_logic.hpp"
-#include "who_human_face_recognition.hpp"
-#include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_vendor.h"
-#include "esp_lcd_panel_ops.h"
-#include "who_lcd.h"
-static const int RX_BUF_SIZE = 1024;
+#include "driver/uart.h"
 
+#include "who_human_face_recognition.hpp"
+
+
+
+#define UART    UART_NUM_2
 #define TXD_PIN (39)
 #define RXD_PIN (38)
 
-#define UART UART_NUM_2
 
-int num = 0;
 
-static QueueHandle_t xQueueKeyStateO = NULL;
+#define UART_RING_BUF_SIZE  256     // بافر حلقوی داخلی درایور
+#define LINE_BUF_SIZE       64      // طولانی‌ترین خط پروتکل + حاشیه‌ی امن
+#define EVENT_QUEUE_LEN     10
+#define LINE_TERMINATOR     '\n'
+
+static const char *TAG = "UART";
+
+static QueueHandle_t xQueueKeyStateO  = NULL;
 static QueueHandle_t XUartToLcdStateO = NULL;
+static QueueHandle_t xUartEventQueue  = NULL;
 
 void init(void) 
 {
@@ -29,106 +35,138 @@ void init(void)
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_APB,
+    
     };
 
     // We won't use a buffer for sending data.
-    uart_driver_install(UART, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
+    uart_driver_install(UART, UART_RING_BUF_SIZE, 0, EVENT_QUEUE_LEN, &xUartEventQueue, 0);
     uart_param_config(UART, &uart_config);
     uart_set_pin(UART, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
+
+    // هر بار بایت '\n' دیده شود یک رویداد UART_PATTERN_DET صادر می‌شود؛
+    // این دقیقاً همان نقشی را دارد که idle-line detection سمت STM32 دارد،
+    // با این تفاوت که به‌جای «سکوت روی خط» یک کاراکتر پایان‌دهنده‌ی صریح داریم.
+    // توجه: نام این تابع در نسخه‌های مختلف ESP-IDF فرق دارد
+    // (در v4.x: uart_enable_pattern_det_baud_intr). اگر کامپایل نشد، نام دقیق
+    // را برای IDF خودتان در driver/uart.h چک کنید.
+    uart_enable_pattern_det_baud_intr(UART, LINE_TERMINATOR, 1, 9, 0, 0);
+    uart_pattern_queue_reset(UART, EVENT_QUEUE_LEN);
+
 }
-/*
-static void tx_task(void *arg)
-{
-	char* Txdata = (char*) malloc(100);
-    while (1) {
-        // ESP_LOGI(TX_TASK_TAG, "text send");
-    	sprintf (Txdata, "Hello world index = %d\r\n", num++);
-        uart_write_bytes(UART, Txdata, strlen(Txdata));
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
+extern "C" {
+    void uart_send_line(const char *str)
+    {
+        uart_write_bytes(UART, str, strlen(str));
+        uart_write_bytes(UART, "\n", 1);
     }
-}*/
+
+    void uart_send_linef(const char *fmt, ...)
+    {
+        char buf[LINE_BUF_SIZE];
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(buf, sizeof(buf), fmt, args);
+        va_end(args);
+        uart_send_line(buf);
+    }
+}
+// تفسیر یک خط کامل (بدون '\n') که از STM32 رسیده است
+static void process_line(char *line)
+{
+    if (strstr(line, "off"))
+    {
+        recognizer_state_t lcd_state = LCD_OFF;
+        xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
+        return;
+    }
+    if (strstr(line, "onL"))
+    {
+        recognizer_state_t lcd_state = LCD_ON;
+        xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
+        return;
+    }
+
+    face_cmd_t cmd = { IDLE, -1 };
+
+    if      (strstr(line, "enr"))             cmd.cmd = ENROLL;
+    else if (strstr(line, "rec"))             cmd.cmd = DETECT;
+    else if (strstr(line, "rem"))             cmd.cmd = DELETE_ALL;
+    else if (strcmp(line, "thresh_up")  == 0) cmd.cmd = THRESH_UP;
+    else if (strcmp(line, "thresh_dwn") == 0) cmd.cmd = THRESH_DOWN;
+    else if (strstr(line, "got"))             cmd.cmd = GOTO_IDLE;
+    else if (strncmp(line, "del", 3) == 0)
+    {
+        // قبلاً: atoi(data + strlen("del") + 1) -> این یک off-by-one بود که فقط
+        // به‌خاطر تساهل atoi در برابر کاراکتر غیررقمی، تصادفاً درست کار می‌کرد.
+        // الان عدد دقیقاً بعد از "del" شروع می‌شود، بدون پدینگ صفر و بدون دنباله‌ی "rrr".
+        cmd.cmd = DELETE;
+        cmd.id  = atoi(line + 3);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "unknown command: '%s'", line);
+        return;
+    }
+
+    // هر دستوری که اینجا برسد قبلاً غیر IDLE تنظیم شده؛ مستقیماً به صف می‌رود
+    xQueueSend(xQueueKeyStateO, &cmd, portMAX_DELAY);
+}
 
 static void rx_task(void *arg)
 {
+    uart_event_t event;
+    uint8_t line_buf[LINE_BUF_SIZE];
     
-   // esp_log_level_set("RX", ESP_LOG_INFO);
-    char* data = (char*) malloc(1024+1);
-    uart_write_bytes(UART, "Ready67890", strlen("Ready67890"));
-   // ESP_LOGI("RX", "send data Read \n\r");
-     int rxBytes;
-    while (1) {
-  
-       rxBytes = uart_read_bytes(UART, data, 10,5000 / portTICK_PERIOD_MS );
-        // ESP_LOGI("RX", "1Read %d bytes str \"%s\"", rxBytes,data);
-        if (rxBytes > 0) {
-            data[rxBytes ] = 0;
-            ESP_LOGI("RX", "Read %d bytes str \"%s\"", rxBytes,data);
-            static recognizer_state_t recognizer_state = IDLE;
-            static recognizer_state_t lcd_state = IDLE;
-           // ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
-          //  uart_write_bytes(UART, data, rxBytes);
-            if(strstr(data,"off") )
+    uart_send_line("Ready");
+    while (1)
+    {
+        if (xQueueReceive(xUartEventQueue, &event, portMAX_DELAY) != pdTRUE)
+            continue;
+       
+        switch (event.type)
+        {
+        case UART_PATTERN_DET:
+        {
+            int pos = uart_pattern_pop_pos(UART);
+            if (pos < 0)
             {
-            //     ESP_LOGE("RX", "LCD OFF %s\n\r",data);
-                 lcd_state = LCD_OFF;
-                 xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY);
-                 
+                // صف موقعیت‌های الگو پر شده بود؛ مرز خط را نمی‌دانیم
+                uart_flush_input(UART);
+                break;
             }
-            else if(strstr(data,"onL") )
+            if (pos >= LINE_BUF_SIZE - 1)
             {
-           //       ESP_LOGE("RX", "LCD ON %s\n\r",data);
-                  lcd_state = LCD_ON;
-                  xQueueSend(XUartToLcdStateO, &lcd_state, portMAX_DELAY); 
-                  
+                // خطی بزرگ‌تر از حد انتظار پروتکل؛ احتمالاً نویز -> دور بریز
+                uart_read_bytes(UART, line_buf, pos + 1, pdMS_TO_TICKS(20));
+                break;
             }
-            else if(strstr(data,"enr"))
-            {// ESP_LOGI("RX", "Read %d bytes: '%s'", rxBytes, data);
-
-                 recognizer_state = ENROLL;
-            }
-            else if(strstr(data,"rec"))
+            int len = uart_read_bytes(UART, line_buf, pos, pdMS_TO_TICKS(20));
+             ESP_LOGI(TAG, "uart rx:%s\n",line_buf);
+            uint8_t terminator;
+            uart_read_bytes(UART, &terminator, 1, pdMS_TO_TICKS(20)); // مصرف خود '\n'
+            if (len > 0)
             {
-                 recognizer_state = DETECT;
+                line_buf[len] = '\0';
+                process_line((char *)line_buf);
+               
             }
-            else if(strstr(data,"rem"))
-            {
-                 recognizer_state = DELETE_ALL;
-            }
-            else if(strcmp(data,"thresh_up0")==0)
-            {
-                 recognizer_state = THRESH_UP;
-            }
-            else if(strcmp(data,"thresh_dwn")==0)
-            {
-                 recognizer_state = THRESH_DOWN;
-            }
-            else if(strstr(data,"got"))
-            {
-           //     ESP_LOGE("RX", "go IDLE %s\n\r",data);
-                 recognizer_state = GOTO_IDLE;
-            }
-            else{
-                char *pos = strstr(data , "del");
-                if (pos != NULL && strlen(data) ==10)
-                {
-                    char number [5];
-                    strncpy(number , data+ strlen("del")+1,4 );
-                    number[4] = '\0'; // Ensure it's always null-terminated
-                    int num = atoi(number) +(int)(DELETE );
-             //       ESP_LOGI("RX", "str \"%s\" del %d ",number, atoi(number) );
-                    recognizer_state = (recognizer_state_t)num  ;
-             //        ESP_LOGI("RX", "delete %d ", recognizer_state);
-                }
-            }
-            if(recognizer_state != IDLE)
-            {
-                 xQueueSend(xQueueKeyStateO, &recognizer_state, portMAX_DELAY);
-            }
-            
+            break;
+        }
+        case UART_FIFO_OVF:
+        case UART_BUFFER_FULL:
+            ESP_LOGW(TAG, "uart overrun, flushing");
+            uart_flush_input(UART);
+            xQueueReset(xUartEventQueue);
+            break;
+        default:
+            break;
         }
     }
-    free(data);
 }
+    
+   
+
 
 
 void register_uart( const QueueHandle_t key_state_o, const QueueHandle_t uart_lcd_state_o)
@@ -136,9 +174,6 @@ void register_uart( const QueueHandle_t key_state_o, const QueueHandle_t uart_lc
     xQueueKeyStateO = key_state_o;
     XUartToLcdStateO = uart_lcd_state_o;
     init();
- //   ESP_LOGI("RX", "uart initialize");
-    xTaskCreate(rx_task, "uart_rx_task", 1024*8, NULL, configMAX_PRIORITIES-1, NULL);
-    // ESP_LOGI("RX", "uart rx");
-    //xTaskCreate(tx_task, "uart_tx_task", 1024*2, NULL, configMAX_PRIORITIES-2, NULL);
-    //ESP_LOGI("RX", "uart tx");
+    xTaskCreate(rx_task, "uart_rx_task", 1024 * 4, NULL, configMAX_PRIORITIES-1, NULL);
+     
 }

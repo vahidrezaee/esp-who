@@ -20,8 +20,8 @@ extern "C" void app_main()
 {
     xQueueAIFrame = xQueueCreate(2, sizeof(camera_fb_t *));
     xQueueLCDFrame = xQueueCreate(2, sizeof(camera_fb_t *));
-    xQueueKeyState = xQueueCreate(1, sizeof(int *));
-    xQueueUartToLcdState = xQueueCreate(1, sizeof(int *));
+    xQueueKeyState = xQueueCreate(4, sizeof(face_cmd_t) );
+    xQueueUartToLcdState = xQueueCreate(1, sizeof(recognizer_state_t));
    // xQueueEventLogic = xQueueCreate(1, sizeof(int *));
 
     register_uart(xQueueKeyState,xQueueUartToLcdState);

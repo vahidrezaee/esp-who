@@ -21,6 +21,11 @@ typedef enum
    
 } recognizer_state_t;
 
+typedef struct
+{
+    recognizer_state_t cmd;
+    int32_t             id;   // فقط برای DELETE معنا دارد؛ در غیر این صورت -1
+} face_cmd_t;
 void register_human_face_recognition(QueueHandle_t frame_i,
                                      QueueHandle_t event,
                                      QueueHandle_t result,
