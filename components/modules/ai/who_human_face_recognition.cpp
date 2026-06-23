@@ -178,7 +178,7 @@ static void task_process_handler(void *arg)
                 uart_send_line("idle");
             }
             vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
+          //  continue;
         }
         if (_gEvent == DETECT || _gEvent == RECOGNIZE)
         {
