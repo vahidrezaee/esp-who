@@ -24,7 +24,7 @@
 
 #include "who_ai_utils.hpp"
 
-// به جای اینکلود کردن هدر، این خطوط را اضافه کن:
+// functions in  uart_logic.cpp
 extern "C" {
     void uart_send_line(const char *str);
     void uart_send_linef(const char *fmt, ...);
@@ -126,12 +126,16 @@ static void task_process_handler(void *arg)
 
     show_state_t frame_show_state = SHOW_STATE_IDLE;
     recognizer_state_t _gEvent = DETECT;
+    recognizer_state_t last_stable_event = DETECT;
     
     int32_t             _gDeleteId       = -1;
-    int                 idle_timeout     = 0;
     int                 frame_count      = 0;
     TickType_t          idle_announce_tick      = 0;
     TickType_t          recognize_announce_tick = 0;
+
+// زمان‌سنجی برای منطق تایم‌اوت‌ها
+    TickType_t          state_changed_tick = xTaskGetTickCount();
+    TickType_t          enroll_timeout_tick = xTaskGetTickCount();
 
     recognizer->set_thresh(0.75);
     int part_ret = recognizer->set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
@@ -140,45 +144,54 @@ static void task_process_handler(void *arg)
       
     while (true)
     {
-        // ---- خواندن دستور جاری به‌صورت atomic + منطق timeout ثبت‌نام ----
+        // ---- بخش اتمیک مانیتورینگ وضعیت و مدیریت زمان‌سنجی ----
         xSemaphoreTake(xMutex, portMAX_DELAY);
-        if (gEvent == DETECT)
-        {
-            idle_timeout = 0;
-        }
-        else
-        {
-            idle_timeout++;
-        }
-        if (_gEvent == DETECT && gEvent != DETECT)
-        {
-            idle_timeout = 0;
-        }
-        if (_gEvent != ENROLL && gEvent == ENROLL)
-        {
-            idle_timeout = 0;
-        }
-        if (idle_timeout > ENROLL_TIMEOUT_FRAMES && _gEvent == ENROLL)
-        {
-            gEvent       = GOTO_IDLE;
-            idle_timeout = 0;
-            uart_send_line("timeout");
-        }
         
+        // اگر وضعیت تغییر کرده باشد، مبدا زمان‌سنجی‌ها را بروزرسانی کن
+        if (gEvent != last_stable_event)
+        {
+            state_changed_tick = xTaskGetTickCount();
+            if (gEvent == ENROLL)
+            {
+                enroll_timeout_tick = xTaskGetTickCount(); // شروع تایمر ۲۰ ثانیه‌ای ثبت‌نام
+            }
+            last_stable_event = gEvent;
+        }
+        // تایم‌اوت مهم جدید: اگر سیستم در حالت ENROLL باشد و پس از ۲۰ ثانیه کسی نیاید
+        if (gEvent == ENROLL)
+        {
+            if ((xTaskGetTickCount() - enroll_timeout_tick) >= pdMS_TO_TICKS(20000))
+            {
+                gEvent = IDLE; // هدایت خودکار به حالت استراحت
+                uart_send_line("timeout");
+                state_changed_tick = xTaskGetTickCount();
+                last_stable_event = IDLE;
+            }
+        }
+        // شرط قبلی: اگر سیستم بیش از ۲ دقیقه (۱۲۰ ثانیه) در منو یا حالتی غیر از تشخیص چهره بماند
+        if (gEvent != DETECT && gEvent != RECOGNIZE)
+        {
+            if ((xTaskGetTickCount() - state_changed_tick) >= pdMS_TO_TICKS(120000))
+            {
+                gEvent = DETECT; // بازگشت خودکار به مود تشخیص اصلی برای باز کردن درب
+                state_changed_tick = xTaskGetTickCount();
+                last_stable_event = DETECT;
+                uart_send_line("timeout_to_detect");
+            }
+        }
         _gEvent    = gEvent;
         _gDeleteId = gDeleteId;
         xSemaphoreGive(xMutex);
-
-        if (_gEvent == IDLE)
+       
+       if (_gEvent == IDLE)
         {
             TickType_t now = xTaskGetTickCount();
-            if ((now - idle_announce_tick) >= pdMS_TO_TICKS(1000))
+            if ((now - idle_announce_tick) >= pdMS_TO_TICKS(5000))
             {
                 idle_announce_tick = now;
                 uart_send_line("idle");
             }
             vTaskDelay(pdMS_TO_TICKS(10));
-          //  continue;
         }
         if (_gEvent == DETECT || _gEvent == RECOGNIZE)
         {
@@ -189,11 +202,93 @@ static void task_process_handler(void *arg)
                 uart_send_line("recognize");
             }
         }
-        if (!xQueueReceive(xQueueFrameI, &frame, portMAX_DELAY))
+       // ========== پردازش فرامینی که به فریم نیاز ندارند ==========
+        if (_gEvent == DELETE || _gEvent == DELETE_ALL ||
+            _gEvent == THRESH_UP || _gEvent == THRESH_DOWN ||
+            _gEvent == GOTO_IDLE)
+        {
+            camera_fb_t *drain_frame = NULL;
+            if (xQueueReceive(xQueueFrameI, &drain_frame, 0) == pdTRUE)
+            {
+                if (xQueueFrameO)
+                    xQueueSend(xQueueFrameO, &drain_frame, 0);
+                else if (gReturnFB)
+                    esp_camera_fb_return(drain_frame);
+                else
+                    free(drain_frame);
+            }
+
+            switch (_gEvent)
+            {
+            case THRESH_DOWN:
+                if (recognizer->get_thresh() > 0.30f)
+                    recognizer->set_thresh(recognizer->get_thresh() - 0.05f);
+                frame_show_state = SHOW_STATE_SHOW_THRESHHOLD;
+                xSemaphoreTake(xMutex, portMAX_DELAY);
+                if (gEvent == THRESH_DOWN) { gEvent = IDLE; }
+                xSemaphoreGive(xMutex);
+                break;
+
+            case THRESH_UP:
+                if (recognizer->get_thresh() < 0.95f)
+                    recognizer->set_thresh(recognizer->get_thresh() + 0.05f);
+                frame_show_state = SHOW_STATE_SHOW_THRESHHOLD;
+                xSemaphoreTake(xMutex, portMAX_DELAY);
+                if (gEvent == THRESH_UP) { gEvent = IDLE; }
+                xSemaphoreGive(xMutex);
+                break;
+
+            case DELETE_ALL:
+                // شرط دوم: عملیات پاک کردن به صورت کامل و بلاکینگ انجام می‌شود و نیمه‌کاره نمی‌ماند
+                recognizer->clear_id(true);
+                uart_send_line("alldeleted");
+                frame_show_state = SHOW_STATE_DELETE_ALL;
+                
+                xSemaphoreTake(xMutex, portMAX_DELAY);
+                if (gEvent == DELETE_ALL) { gEvent = IDLE; }
+                xSemaphoreGive(xMutex);
+                break;
+
+            case DELETE:
+            {
+                // شرط دوم: حذف ID به صورت کامل انجام می‌گیرد و با فرامینی مثل gotoidle در وسط کار خراب نمی‌شود
+                int deleted = recognizer->delete_id(_gDeleteId, true);
+                if (deleted != -1)
+                {
+                    recognize_result.id = _gDeleteId;
+                    uart_send_linef("remove%d", _gDeleteId);
+                }
+                else
+                {
+                    recognize_result.id = -1;
+                    uart_send_linef("remove-1"); 
+                }
+                frame_show_state = SHOW_STATE_DELETE;
+                
+                xSemaphoreTake(xMutex, portMAX_DELAY);
+                if (gEvent == DELETE) { 
+                    gEvent = IDLE;
+                     }
+                xSemaphoreGive(xMutex);
+                break;
+            }
+            case GOTO_IDLE:
+                xSemaphoreTake(xMutex, portMAX_DELAY);
+                if (gEvent == GOTO_IDLE)   
+                {
+                    gEvent = IDLE;
+                }
+                xSemaphoreGive(xMutex);
+                break;
+            default: break;
+            }
+            continue; 
+        }
+        if (xQueueReceive(xQueueFrameI, &frame, pdMS_TO_TICKS(200)) != pdTRUE)
         {
             continue;
-        }    
-    
+        }
+
         bool is_detected = false;
         std::list<dl::detect::result_t> &detect_candidates =
             detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
@@ -207,7 +302,7 @@ static void task_process_handler(void *arg)
         switch (_gEvent)
         {
         case DETECT:
-        case RECOGNIZE:   // از نظر پروتکل معادل DETECT: «دنبال یک چهره‌ی شناخته‌شده بگرد»
+        case RECOGNIZE:   
             if (is_detected)
             {
                 recognize_result = recognizer->recognize((uint16_t *)frame->buf,
@@ -226,23 +321,6 @@ static void task_process_handler(void *arg)
                 frame_show_state = SHOW_STATE_RECOGNIZE;
             }
             break;
-
-        case THRESH_DOWN:
-            if (recognizer->get_thresh() > 0.30f)
-            {
-                recognizer->set_thresh(recognizer->get_thresh() - 0.05f);
-            }
-            frame_show_state = SHOW_STATE_SHOW_THRESHHOLD;
-            break;
-
-        case THRESH_UP:
-            if (recognizer->get_thresh() < 0.95f)
-            {
-                recognizer->set_thresh(recognizer->get_thresh() + 0.05f);
-            }
-            frame_show_state = SHOW_STATE_SHOW_THRESHHOLD;
-            break;
-
         case ENROLL:
             if (is_detected)
             {
@@ -254,55 +332,17 @@ static void task_process_handler(void *arg)
                     uart_send_linef("enroll%d", enrolled_id);
 
                     xSemaphoreTake(xMutex, portMAX_DELAY);
-                    gEvent = GOTO_IDLE;
+                    if (gEvent == ENROLL) { gEvent = IDLE; }
                     xSemaphoreGive(xMutex);
 
                     frame_show_state = SHOW_STATE_ENROLL;
                 }
             }
             break;
-
-        case DELETE_ALL:
-            recognizer->clear_id(true);
-            uart_send_line("alldeleted");
-            frame_show_state = SHOW_STATE_DELETE_ALL;
-
-            xSemaphoreTake(xMutex, portMAX_DELAY);
-            gEvent = GOTO_IDLE;
-            xSemaphoreGive(xMutex);
-            break;
-
-        case DELETE:
-        {
-            int deleted = recognizer->delete_id(_gDeleteId, true);
-            if (deleted != -1)
-            {
-                recognize_result.id = _gDeleteId;
-                uart_send_linef("remove%d", _gDeleteId);
-            }
-            else
-            {
-                recognize_result.id = -1;
-            }
-            frame_show_state = SHOW_STATE_DELETE;
-
-            xSemaphoreTake(xMutex, portMAX_DELAY);
-            gEvent = GOTO_IDLE;
-            xSemaphoreGive(xMutex);
-            break;
-        }
-
-        case GOTO_IDLE:
-            xSemaphoreTake(xMutex, portMAX_DELAY);
-            gEvent = IDLE;
-            xSemaphoreGive(xMutex);
-            break;
         default:
-            // چیزی برای انجام دادن نیست؛ فریم فقط برای حفظ جریان دوربین/LCD مصرف می‌شود
             break;
-        }          
-      
-        // ---- نمایش نتیجه‌ی آخرین عملیات روی فریم، به مدت چند فریم ----
+    }
+            // ---- نمایش وضعیت موقت گرافیکی روی فریم خروجی ----
         if (frame_show_state != SHOW_STATE_IDLE)
         {
             switch (frame_show_state)
@@ -338,7 +378,6 @@ static void task_process_handler(void *arg)
                 frame_show_state = SHOW_STATE_IDLE;
             }
         }
-
         if (detect_results.size())
         {
             #if !CONFIG_IDF_TARGET_ESP32S3
@@ -362,21 +401,40 @@ static void task_process_handler(void *arg)
         if (xQueueResult && is_detected)
         {
             xQueueSend(xQueueResult, &recognize_result, portMAX_DELAY);
-        }
+        }    
+    
         
     }
 }
 
+// تسک مدیریت رویدادها با مکانیسم محافظت و Handshake اتمیک جهت جلوگیری از تداخل فرامین متوالی حذف
 static void task_event_handler(void *arg)
 {
     face_cmd_t cmd;
     while (true)
     {
+        // دریافت دستور جدید از صف یوارت (بدون از دست رفتن داده‌ها)
         xQueueReceive(xQueueEvent, &cmd, portMAX_DELAY);
-        xSemaphoreTake(xMutex, portMAX_DELAY);
-        gEvent    = cmd.cmd;
-        gDeleteId = cmd.id;
-        xSemaphoreGive(xMutex);
+        
+        while (true) 
+        {
+            xSemaphoreTake(xMutex, portMAX_DELAY);
+            
+            // اگر تسک اصلی در حال اجرای یک فرمان حساس و یک‌بار مصرف است، صبر کن تا کارش تمام شود و وضعیت IDLE شود
+            if (gEvent == DELETE || gEvent == DELETE_ALL || gEvent == THRESH_UP || gEvent == THRESH_DOWN || gEvent == GOTO_IDLE) 
+            {
+                xSemaphoreGive(xMutex);
+                vTaskDelay(pdMS_TO_TICKS(5)); // ۵ میلی‌ثانیه صبر برای پایان عملیات فلش در تسک اصلی
+            } 
+            else 
+            {
+                // زمانی که سیستم آزاد شد، دستور بعدی با امنیت کامل اعمال می‌شود
+                gEvent    = cmd.cmd;
+                gDeleteId = cmd.id;
+                xSemaphoreGive(xMutex);
+                break;
+            }
+        }
     }
 }
 

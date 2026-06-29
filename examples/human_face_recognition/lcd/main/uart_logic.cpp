@@ -69,11 +69,13 @@ extern "C" {
         vsnprintf(buf, sizeof(buf), fmt, args);
         va_end(args);
         uart_send_line(buf);
+        ESP_LOGW("tx", "uart tx:%s\n", buf );
     }
 }
 // تفسیر یک خط کامل (بدون '\n') که از STM32 رسیده است
 static void process_line(char *line)
 {
+   
     if (strstr(line, "off"))
     {
         recognizer_state_t lcd_state = LCD_OFF;
@@ -142,12 +144,13 @@ static void rx_task(void *arg)
                 break;
             }
             int len = uart_read_bytes(UART, line_buf, pos, pdMS_TO_TICKS(20));
-             ESP_LOGI(TAG, "uart rx:%s\n",line_buf);
+            
             uint8_t terminator;
             uart_read_bytes(UART, &terminator, 1, pdMS_TO_TICKS(20)); // مصرف خود '\n'
             if (len > 0)
             {
                 line_buf[len] = '\0';
+                 ESP_LOGI(TAG, "uart rx:%s\n",line_buf);
                 process_line((char *)line_buf);
                
             }
