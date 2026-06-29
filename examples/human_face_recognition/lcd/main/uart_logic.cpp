@@ -59,6 +59,7 @@ extern "C" {
     {
         uart_write_bytes(UART, str, strlen(str));
         uart_write_bytes(UART, "\n", 1);
+        ESP_LOGW("tx", "uart tx:%s\n", str );
     }
 
     void uart_send_linef(const char *fmt, ...)
@@ -69,7 +70,7 @@ extern "C" {
         vsnprintf(buf, sizeof(buf), fmt, args);
         va_end(args);
         uart_send_line(buf);
-        ESP_LOGW("tx", "uart tx:%s\n", buf );
+        
     }
 }
 // تفسیر یک خط کامل (بدون '\n') که از STM32 رسیده است

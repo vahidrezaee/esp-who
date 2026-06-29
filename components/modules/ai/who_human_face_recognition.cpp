@@ -186,7 +186,7 @@ static void task_process_handler(void *arg)
        if (_gEvent == IDLE)
         {
             TickType_t now = xTaskGetTickCount();
-            if ((now - idle_announce_tick) >= pdMS_TO_TICKS(5000))
+            if ((now - idle_announce_tick) >= pdMS_TO_TICKS(10000))
             {
                 idle_announce_tick = now;
                 uart_send_line("idle");
@@ -196,7 +196,7 @@ static void task_process_handler(void *arg)
         if (_gEvent == DETECT || _gEvent == RECOGNIZE)
         {
             TickType_t now = xTaskGetTickCount();
-            if ((now - recognize_announce_tick) >= pdMS_TO_TICKS(1000))
+            if ((now - recognize_announce_tick) >= pdMS_TO_TICKS(10000))
             {
                 recognize_announce_tick = now;
                 uart_send_line("recognize");
