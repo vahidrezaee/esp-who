@@ -116,6 +116,9 @@ static void task_process_handler(void *arg)
     HumanFaceDetectMSR01 detector(0.3F, 0.3F, 10, 0.3F);
     HumanFaceDetectMNP01 detector2(0.4F, 0.3F, 10);
 
+size_t heap_before = esp_get_free_heap_size();
+int64_t t0 = esp_timer_get_time();
+
 #if CONFIG_MFN_V1
 #if CONFIG_S8
     FaceRecognition112V1S8 *recognizer = new FaceRecognition112V1S8();
@@ -123,6 +126,10 @@ static void task_process_handler(void *arg)
     FaceRecognition112V1S16 *recognizer = new FaceRecognition112V1S16();
 #endif
 #endif
+
+
+int64_t t1 = esp_timer_get_time();
+size_t heap_after1 = esp_get_free_heap_size();
 
     show_state_t frame_show_state = SHOW_STATE_IDLE;
     recognizer_state_t _gEvent = DETECT;
@@ -140,8 +147,12 @@ static void task_process_handler(void *arg)
     recognizer->set_thresh(0.75);
     int part_ret = recognizer->set_partition(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "fr");
     int restor_ret = recognizer->set_ids_from_flash();
-    ESP_LOGE("ENROLL", "thresh %f partitoin %d ids %d", recognizer->get_thresh(),part_ret,restor_ret);
-      
+    ESP_LOGE("esp-WHO", "thresh %f partitoin %d ids %d", recognizer->get_thresh(),part_ret,restor_ret);
+    #if CONFIG_S8
+    ESP_LOGE("esp-WHO", " recognizer set 8 bit quantities\n");
+    #elif CONFIG_S16
+    ESP_LOGE("esp-WHO", " recognizer set 16 bit quantities\n");
+     #endif
     while (true)
     {
         // ---- بخش اتمیک مانیتورینگ وضعیت و مدیریت زمان‌سنجی ----
@@ -288,7 +299,8 @@ static void task_process_handler(void *arg)
         {
             continue;
         }
-
+int64_t t2 = esp_timer_get_time();
+size_t heap_after2 = esp_get_free_heap_size();
         bool is_detected = false;
         std::list<dl::detect::result_t> &detect_candidates =
             detector.infer((uint16_t *)frame->buf, {(int)frame->height, (int)frame->width, 3});
@@ -305,11 +317,19 @@ static void task_process_handler(void *arg)
         case RECOGNIZE:   
             if (is_detected)
             {
+                int64_t t3 = esp_timer_get_time();
+                size_t heap_after3 = esp_get_free_heap_size();
                 recognize_result = recognizer->recognize((uint16_t *)frame->buf,
                                                           {(int)frame->height, (int)frame->width, 3},
                                                           detect_results.front().keypoint);
                 print_detection_result(detect_results);
+                int64_t t4 = esp_timer_get_time();
+                size_t heap_after4 = esp_get_free_heap_size();
 
+
+                ESP_LOGI("BENCH", "RAM used by model: %d bytes", (int)(heap_before - heap_after4));
+                ESP_LOGI("BENCH", "Inference time: %lld ms", (t4 - t0) / 1000);
+                ESP_LOGI("BENCH", "Free heap now: %d", (int)heap_after4);
                 if (recognize_result.id > 0)
                 {
                     uart_send_linef("grante%d", recognize_result.id);
